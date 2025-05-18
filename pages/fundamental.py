@@ -2,24 +2,20 @@
 Fundamental analysis page for the Finance Board application.
 """
 
-import pandas as pd
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from modules.utils.helpers import format_pct, format_num, format_currency, format_with_suffix
+from modules.utils.helpers import format_pct
 from modules.visualizations.charts import (
     create_growth_chart, create_dividend_chart, create_balance_sheet_chart,
-    create_earnings_chart, create_income_statement_chart, create_cash_flow_chart,
-    create_earnings_estimate_chart
+    create_income_statement_chart, create_cash_flow_chart
 )
 from config.settings import COLORS
 
 
 def render_fundamental_page(ticker, asset_name, info, financials_q, financials_a,
-                           balance_sheet_q, balance_sheet_a, cash_flow_q, cash_flow_a,
-                           earnings_estimate, recommendations, dividends):
+                           balance_sheet_q, balance_sheet_a, cash_flow_q, cash_flow_a, dividends):
     """
     Render the fundamental analysis page.
 
@@ -252,28 +248,6 @@ def render_fundamental_page(ticker, asset_name, info, financials_q, financials_a
                 bs_chart = create_balance_sheet_chart(balance_sheet_q)
                 if bs_chart:
                     st.plotly_chart(bs_chart, use_container_width=True)
-
-                # Balance Sheet Snapshot (Quarterly YoY % Change)
-                st.markdown("#### Balance Sheet Snapshot (Quarterly YoY % Change)")
-
-                # Select a few key items and show YoY % change for the latest quarter
-                key_bs_items = ['Total Assets', 'Total Liab', 'Total Stockholder Equity', 'Cash']
-                bs_snapshot = balance_sheet_q.loc[balance_sheet_q.index.isin(key_bs_items)].T.sort_index(ascending=False)
-
-                if len(bs_snapshot) >= 5:  # Need at least 5 quarters for YoY change (current + 4 previous)
-                    bs_yoy_change = bs_snapshot.pct_change(periods=4) * 100  # YoY change
-                    latest_q_yoy = bs_yoy_change.iloc[0:1]  # Latest quarter's YoY change
-
-                    if not latest_q_yoy.empty:
-                        st.caption(f"Latest Quarter: {latest_q_yoy.index[0].strftime('%Y-%m-%d')}")
-                        # Transpose for better display and select only relevant items
-                        display_df = latest_q_yoy.T
-                        display_df.columns = ["YoY % Change"]
-                        st.dataframe(display_df.style.format("{:.2f}%", na_rep="–"))
-                    else:
-                        st.info("Not enough quarterly data for YoY balance sheet snapshot.")
-                else:
-                    st.info("Not enough quarterly data for YoY balance sheet snapshot.")
             else:
                 st.info("Quarterly balance sheet data not available.")
         else:  # Annual
@@ -428,182 +402,4 @@ def render_fundamental_page(ticker, asset_name, info, financials_q, financials_a
         else:
             st.info(f"No dividend history available for {ticker}.")
 
-    with fund_tabs[5]:  # Analyst Ratings
-        st.markdown("### Analyst Recommendations")
-
-        if not recommendations.empty:
-            # Display the most recent recommendations
-            st.markdown("#### Recent Analyst Recommendations")
-
-            # Format the dataframe for display
-            rec_df = recommendations.copy()
-            rec_df = rec_df.sort_index(ascending=False).head(10)  # Show last 10 recommendations
-
-            # Display the dataframe
-            st.dataframe(rec_df, use_container_width=True)
-
-            # Visualize recommendations
-            st.markdown("#### Recommendation Trends")
-
-            try:
-                # Count recommendations by grade
-                # Check if 'To Grade' column exists, otherwise use the first column
-                if rec_df.empty or len(rec_df.columns) == 0:
-                    st.warning("Recommendations data is empty or has no columns.")
-                    rec_counts = pd.DataFrame(columns=['Recommendation', 'Count'])
-                else:
-                    grade_column = 'To Grade' if 'To Grade' in rec_df.columns else rec_df.columns[0]
-                    rec_counts = rec_df[grade_column].value_counts().reset_index()
-                    rec_counts.columns = ['Recommendation', 'Count']
-            except Exception as e:
-                st.warning(f"Could not process recommendation counts: {e}")
-                rec_counts = pd.DataFrame(columns=['Recommendation', 'Count'])
-
-            # Create pie chart if we have data
-            if not rec_counts.empty and 'Count' in rec_counts.columns and rec_counts['Count'].sum() > 0:
-                fig = px.pie(
-                    rec_counts,
-                    values='Count',
-                    names='Recommendation',
-                    title='Current Analyst Recommendations',
-                    color_discrete_sequence=px.colors.sequential.Viridis
-                )
-
-                # Update layout
-                fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    margin=dict(l=0, r=0, t=50, b=0)
-                )
-
-                st.plotly_chart(fig, use_container_width=True)
-            elif not rec_df.empty:
-                st.info("Could not create recommendation pie chart due to data format issues.")
-
-            # Recommendation trend over time
-            st.markdown("#### Recommendation History")
-
-            try:
-                # Group recommendations by date and grade
-                rec_trend = rec_df.reset_index()
-
-                # Check if we have a date column
-                date_column = None
-                if 'Date' in rec_trend.columns:
-                    date_column = 'Date'
-                elif rec_trend.index.name == 'Date':
-                    date_column = rec_trend.index.name
-                elif isinstance(rec_trend.index, pd.DatetimeIndex):
-                    # If index is already a DatetimeIndex, use it
-                    date_column = rec_trend.index.name or 'index'
-                elif rec_trend.columns[0] == 'index' and pd.api.types.is_datetime64_any_dtype(rec_trend['index']):
-                    # If first column is a datetime after reset_index
-                    date_column = 'index'
-                else:
-                    # Try to find any datetime column
-                    for col in rec_trend.columns:
-                        if pd.api.types.is_datetime64_any_dtype(rec_trend[col]):
-                            date_column = col
-                            break
-
-                if date_column is None:
-                    st.warning("Could not find a date column in recommendations data.")
-                    rec_trend = pd.DataFrame()  # Empty DataFrame to skip the chart
-                else:
-                    # Check if 'To Grade' column exists, otherwise use the first non-date column
-                    grade_columns = [col for col in rec_trend.columns if col != date_column]
-                    grade_column = 'To Grade' if 'To Grade' in rec_trend.columns else (grade_columns[0] if grade_columns else None)
-
-                    if grade_column:
-                        rec_trend = rec_trend.groupby([pd.Grouper(key=date_column, freq='M'), grade_column]).size().unstack().fillna(0)
-                    else:
-                        st.warning("Could not find a grade column in recommendations data.")
-                        rec_trend = pd.DataFrame()  # Empty DataFrame to skip the chart
-            except Exception as e:
-                st.warning(f"Could not process recommendation trend data: {e}")
-                rec_trend = pd.DataFrame()  # Empty DataFrame to skip the chart
-
-            # Create stacked bar chart if we have data
-            if not rec_trend.empty and len(rec_trend.columns) > 0:
-                fig = go.Figure()
-
-                for grade in rec_trend.columns:
-                    fig.add_trace(go.Bar(
-                        x=rec_trend.index,
-                        y=rec_trend[grade],
-                        name=grade
-                    ))
-
-                # Update layout
-                fig.update_layout(
-                    title="Recommendation History",
-                    xaxis_title="Date",
-                    yaxis_title="Count",
-                    barmode='stack',
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    margin=dict(l=0, r=0, t=50, b=0)
-                )
-
-                st.plotly_chart(fig, use_container_width=True)
-            elif not rec_df.empty:
-                st.info("Could not create recommendation trend chart due to data format issues.")
-            # If rec_df is empty, we already show a message above
-        else:
-            st.info(f"No analyst recommendations available for {ticker}.")
-
-        # Earnings estimates
-        st.markdown("### Earnings Estimates")
-
-        if not earnings_estimate.empty:
-            # Display earnings estimates
-            st.markdown("#### Earnings Estimates")
-
-            # Format the dataframe for display
-            est_df = earnings_estimate.copy()
-
-            # Display the dataframe
-            st.dataframe(est_df, use_container_width=True)
-
-            # Try to visualize earnings estimates if possible
-            try:
-                # First, try to use our enhanced earnings estimate comparison chart
-                # We need to get the earnings data from the app.py
-                earnings = pd.DataFrame()
-                if 'earnings' in st.session_state:
-                    earnings = st.session_state.earnings
-
-                if not earnings.empty and not est_df.empty:
-                    st.markdown("#### Actual vs. Estimated Earnings")
-                    earnings_comparison = create_earnings_estimate_chart(earnings, est_df)
-                    if earnings_comparison:
-                        st.plotly_chart(earnings_comparison, use_container_width=True)
-
-                # Create a simple bar chart of earnings estimates
-                if not est_df.empty and 'Earnings Estimate' in est_df.columns:
-                    st.markdown("#### Earnings Estimates by Period")
-                    # Extract earnings estimates
-                    if isinstance(est_df['Earnings Estimate'], pd.Series):
-                        est_data = est_df['Earnings Estimate'].reset_index()
-                        est_data.columns = ['Period', 'Estimate']
-
-                        # Create bar chart
-                        fig = px.bar(
-                            est_data,
-                            x='Period',
-                            y='Estimate',
-                            title='Earnings Estimates',
-                            color='Estimate',
-                            color_continuous_scale=px.colors.sequential.Viridis
-                        )
-
-                        # Update layout
-                        fig.update_layout(
-                            xaxis_title="Period",
-                            yaxis_title="Earnings Estimate ($)",
-                            margin=dict(l=0, r=0, t=50, b=0)
-                        )
-
-                        st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.info(f"Could not visualize earnings estimates: {e}")
-        else:
-            st.info(f"No earnings estimate data available for {ticker}.")
+    
