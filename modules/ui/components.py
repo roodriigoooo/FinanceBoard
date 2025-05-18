@@ -12,9 +12,9 @@ from config.settings import COLORS, DEFAULT_TICKER, DEFAULT_BENCHMARK, DEFAULT_T
 def setup_page_config():
     """Configure the Streamlit page."""
     st.set_page_config(
-        page_title="Enhanced Stock Metrics Dashboard",
+        page_title="FinanceBoard",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="expanded"
     )
 
     # Apply custom CSS
