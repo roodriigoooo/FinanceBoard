@@ -1,0 +1,6 @@
+pandas 
+newsapi-python
+newsapi
+plotly
+yfinance
+streamlit
