@@ -3,12 +3,14 @@ Overview page for the Finance Board application.
 """
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 import plotly.express as px
 
 from modules.utils.helpers import format_pct, format_num, format_currency, format_with_suffix, annualised, pick_price_col
 from modules.visualizations.charts import create_performance_comparison_chart
 from modules.data.loader import fetch_stock_data
+from config.settings import COLORS
 
 
 def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench_price_col=None, bench_price=None, benchmark=None, bench_total=None, bench_rets=None, rets=None, start_date=None, end_date=None):
@@ -48,49 +50,121 @@ def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench
     # --- KPI Cards ---
     st.subheader("Key Performance Indicators")
 
-    # Create a more visually appealing layout with cards
-    st.markdown("""
+    # Create a clean, simplified layout with cards that incorporate color-coded trend indicators
+    st.markdown(f"""
     <style>
-    .metric-card {
+    /* Base card styles */
+    .metric-card {{
         background-color: white;
         border-radius: 10px;
         padding: 20px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         margin-bottom: 20px;
-        border-left: 4px solid #3274a1;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    .metric-title {
+        border-left: 4px solid {COLORS["BLUE"]};
+    }}
+
+    /* Card title */
+    .metric-title {{
         font-size: 0.9rem;
-        font-weight: 500;
-        color: black;
-        margin-bottom: 8px;
-    }
-    .metric-value {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 10px;
+        letter-spacing: 0.5px;
+    }}
+
+    /* Primary metric value */
+    .metric-value {{
         font-size: 1.8rem;
         font-weight: 700;
-        color: black;
-        margin-bottom: 5px;
-    }
-    .metric-delta-positive {
-        color: #2ca02c;
-        font-weight: 500;
+        color: #111;
+        margin-bottom: 8px;
+    }}
+
+    /* Delta indicators with semantic colors */
+    .metric-delta-positive {{
+        color: {COLORS["GREEN"]};
+        font-weight: 600;
         font-size: 1rem;
-    }
-    .metric-delta-negative {
-        color: #d62728;
-        font-weight: 500;
+        margin-bottom: 10px;
+    }}
+
+    .metric-delta-negative {{
+        color: {COLORS["RED"]};
+        font-weight: 600;
         font-size: 1rem;
-    }
-    .metric-context {
-        font-size: 0.8rem;
-        color: black;
-        margin-top: 8px;
-    }
+        margin-bottom: 10px;
+    }}
+
+    .metric-delta-neutral {{
+        color: {COLORS["NEUTRAL"]};
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 10px;
+    }}
+
+    /* Context information */
+    .metric-context {{
+        font-size: 0.85rem;
+        color: #444;
+        margin-top: 6px;
+        line-height: 1.4;
+    }}
+
+    /* Highlight important context */
+    .metric-context-highlight {{
+        font-weight: 600;
+        color: #333;
+    }}
+
+    /* Status indicators */
+    .status-indicator {{
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-left: 8px;
+    }}
+
+    .status-positive {{
+        background-color: rgba(44, 160, 44, 0.15);
+        color: {COLORS["GREEN"]};
+    }}
+
+    .status-negative {{
+        background-color: rgba(214, 39, 40, 0.15);
+        color: {COLORS["RED"]};
+    }}
+
+    .status-neutral {{
+        background-color: rgba(144, 144, 144, 0.15);
+        color: {COLORS["NEUTRAL"]};
+    }}
+
+    .status-warning {{
+        background-color: rgba(225, 129, 60, 0.15);
+        color: {COLORS["ORANGE"]};
+    }}
+
+    /* Card with positive border */
+    .metric-card-positive {{
+        border-left: 4px solid {COLORS["GREEN"]};
+    }}
+
+    /* Card with negative border */
+    .metric-card-negative {{
+        border-left: 4px solid {COLORS["RED"]};
+    }}
+
+    /* Card with neutral border */
+    .metric-card-neutral {{
+        border-left: 4px solid {COLORS["NEUTRAL"]};
+    }}
+
+    /* Card with warning border */
+    .metric-card-warning {{
+        border-left: 4px solid {COLORS["ORANGE"]};
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -98,100 +172,275 @@ def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench
     col1, col2 = st.columns(2)
     col3, col4 = st.columns(2)
 
-    # KPI 1: Price Change with enhanced context
+    # KPI 1: Price Change with trend indicator
     price_change_pct_overview = (price.iloc[-1] / price.iloc[-2] - 1) if len(price) >= 2 else None
     price_change_abs = price.iloc[-1] - price.iloc[-2] if len(price) >= 2 else None
 
+    # Determine the trend over the last 5 days
+    trend_status = "neutral"
+    trend_text = "Neutral trend"
+    if len(price) >= 5:
+        five_day_change = price.iloc[-1] / price.iloc[-5] - 1
+        if five_day_change > 0.03:
+            trend_status = "positive"
+            trend_text = "Strong upward trend"
+        elif five_day_change > 0.01:
+            trend_status = "positive"
+            trend_text = "Upward trend"
+        elif five_day_change < -0.03:
+            trend_status = "negative"
+            trend_text = "Strong downward trend"
+        elif five_day_change < -0.01:
+            trend_status = "negative"
+            trend_text = "Downward trend"
+        else:
+            trend_status = "neutral"
+            trend_text = "Sideways trend"
+
     with col1:
-        delta_class = "metric-delta-positive" if price_change_pct_overview and price_change_pct_overview > 0 else "metric-delta-negative"
-        delta_symbol = "↑" if price_change_pct_overview and price_change_pct_overview > 0 else "↓"
+        # Determine card style based on price change
+        card_class = "metric-card"
+        if price_change_pct_overview:
+            if price_change_pct_overview > 0:
+                card_class = "metric-card metric-card-positive"
+                delta_class = "metric-delta-positive"
+                delta_symbol = "↑"
+            else:
+                card_class = "metric-card metric-card-negative"
+                delta_class = "metric-delta-negative"
+                delta_symbol = "↓"
+        else:
+            delta_class = "metric-delta-neutral"
+            delta_symbol = "–"
+
         delta_text = f"{delta_symbol} {format_pct(abs(price_change_pct_overview))}" if price_change_pct_overview is not None else ""
 
+        # Create status indicator for the trend
+        status_class = f"status-{trend_status}"
+
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">DAY CHANGE</div>
+        <div class="{card_class}">
+            <div class="metric-title">DAY CHANGE <span class="{status_class} status-indicator">{trend_text}</span></div>
             <div class="metric-value">{format_pct(price_change_pct_overview) if price_change_pct_overview is not None else "–"}</div>
             <div class="{delta_class}">{delta_text}</div>
-            <div class="metric-context">Absolute: ${f"{price_change_abs:.2f}" if price_change_abs is not None else "0.00"}</div>
+            <div class="metric-context">Absolute change: ${f"{price_change_abs:.2f}" if price_change_abs is not None else "0.00"}</div>
+            <div class="metric-context">Based on 5-day price movement</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # KPI 2: Market Cap with enhanced context
+    # KPI 2: Market Cap with category indicator
     market_cap = info.get('marketCap')
     shares_outstanding = info.get('sharesOutstanding')
 
+    # Market cap categories with context
+    cap_category = ""
+    cap_status = "neutral"
+    cap_context = ""
+
+    if market_cap:
+        if market_cap > 200e9:
+            cap_category = "Mega Cap"
+            cap_status = "positive"
+            cap_context = "Top 1% of companies by size"
+        elif market_cap > 10e9:
+            cap_category = "Large Cap"
+            cap_status = "positive"
+            cap_context = "Top 10% of companies by size"
+        elif market_cap > 2e9:
+            cap_category = "Mid Cap"
+            cap_status = "neutral"
+            cap_context = "Medium-sized company"
+        elif market_cap > 300e6:
+            cap_category = "Small Cap"
+            cap_status = "neutral"
+            cap_context = "Smaller company"
+        else:
+            cap_category = "Micro Cap"
+            cap_status = "warning"
+            cap_context = "Very small company"
+
+    # Calculate shares outstanding context if available
+    shares_context = ""
+    if shares_outstanding and market_cap:
+        price_per_share = market_cap / shares_outstanding
+        shares_context = f"Implied share price: ${price_per_share:.2f}"
+
     with col2:
-        market_cap_context = ""
-        if market_cap:
-            if market_cap > 200e9:
-                cap_category = "Mega Cap"
-            elif market_cap > 10e9:
-                cap_category = "Large Cap"
-            elif market_cap > 2e9:
-                cap_category = "Mid Cap"
-            elif market_cap > 300e6:
-                cap_category = "Small Cap"
-            else:
-                cap_category = "Micro Cap"
-            market_cap_context = f"Category: {cap_category}"
+        # Determine card style based on market cap category
+        card_class = "metric-card"
+        if cap_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif cap_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator for market cap category
+        status_class = f"status-{cap_status}"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">MARKET CAP</div>
+        <div class="{card_class}">
+            <div class="metric-title">MARKET CAP <span class="{status_class} status-indicator">{cap_category}</span></div>
             <div class="metric-value">{format_with_suffix(market_cap) if market_cap else "–"}</div>
-            <div class="metric-context">{market_cap_context}</div>
+            <div class="metric-context-highlight">{cap_context if market_cap else ""}</div>
+            <div class="metric-context">Exact value: {format_currency(market_cap, 0) if market_cap else "–"}</div>
+            <div class="metric-context">{shares_context}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # KPI 3: P/E Ratio with enhanced context
+    # KPI 3: P/E Ratio with valuation indicator
     pe_ratio = info.get('trailingPE')
     forward_pe = info.get('forwardPE')
     sector = info.get('sector')
 
+    # Define sector average P/Es (simplified for illustration)
+    sector_pe_map = {
+        "Technology": 30,
+        "Healthcare": 25,
+        "Consumer Cyclical": 22,
+        "Financial Services": 15,
+        "Communication Services": 20,
+        "Industrials": 18,
+        "Consumer Defensive": 20,
+        "Energy": 12,
+        "Basic Materials": 14,
+        "Utilities": 16,
+        "Real Estate": 18
+    }
+
+    # Market average P/E (simplified)
+    market_avg_pe = 20
+
     with col3:
         pe_context = ""
-        if pe_ratio and sector:
-            # This is simplified - in a real app you'd compare to actual sector averages
-            if sector == "Technology" and pe_ratio < 25:
-                pe_context = "Below tech sector average"
-            elif sector == "Technology" and pe_ratio > 35:
-                pe_context = "Above tech sector average"
-            elif pe_ratio > 25:
-                pe_context = "Above market average"
+        pe_status = "neutral"
+        sector_avg = sector_pe_map.get(sector, market_avg_pe) if sector else market_avg_pe
+
+        # Determine if P/E is high, low, or average compared to sector
+        if pe_ratio:
+            pe_diff_pct = (pe_ratio / sector_avg - 1) * 100
+
+            if pe_diff_pct < -30:
+                pe_context = f"Significantly undervalued vs. {sector or 'market'}"
+                pe_status = "positive"
+                valuation = "Undervalued"
+            elif pe_diff_pct < -15:
+                pe_context = f"Potentially undervalued vs. {sector or 'market'}"
+                pe_status = "positive"
+                valuation = "Undervalued"
+            elif pe_diff_pct > 50:
+                pe_context = f"Significantly overvalued vs. {sector or 'market'}"
+                pe_status = "negative"
+                valuation = "Overvalued"
+            elif pe_diff_pct > 20:
+                pe_context = f"Potentially overvalued vs. {sector or 'market'}"
+                pe_status = "warning"
+                valuation = "Potentially Overvalued"
             else:
-                pe_context = "Near market average"
+                pe_context = f"Fairly valued vs. {sector or 'market'}"
+                pe_status = "neutral"
+                valuation = "Fair Value"
+
+        # Calculate P/E to growth ratio if forward P/E is available
+        peg_context = ""
+        if forward_pe and info.get('pegRatio'):
+            peg = info.get('pegRatio')
+            if peg < 1:
+                peg_context = "PEG < 1: Potentially undervalued"
+            elif peg < 1.5:
+                peg_context = "PEG 1-1.5: Fairly valued"
+            else:
+                peg_context = "PEG > 1.5: Potentially overvalued"
+
+        # Determine card style based on P/E status
+        card_class = "metric-card"
+        if pe_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif pe_status == "negative":
+            card_class = "metric-card metric-card-negative"
+        elif pe_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator
+        status_class = f"status-{pe_status}"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">P/E RATIO (TTM)</div>
+        <div class="{card_class}">
+            <div class="metric-title">P/E RATIO (TTM) <span class="{status_class} status-indicator">{valuation if pe_ratio else ''}</span></div>
             <div class="metric-value">{f"{pe_ratio:.2f}" if pe_ratio else "–"}</div>
+            <div class="metric-context-highlight">{pe_context}</div>
             <div class="metric-context">Forward P/E: {f"{forward_pe:.2f}" if forward_pe else "–"}</div>
-            <div class="metric-context">{pe_context}</div>
+            <div class="metric-context">{peg_context}</div>
+            <div class="metric-context">Sector avg: {f"{sector_avg:.2f}" if sector else f"{market_avg_pe:.2f} (market)"}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # KPI 4: Dividend Yield with enhanced context
+    # KPI 4: Dividend Yield with sustainability indicator
     dividend_yield = info.get('dividendYield')
     payout_ratio = info.get('payoutRatio')
+    dividend_rate = info.get('dividendRate')
 
     with col4:
-        dividend_context = ""
-        if dividend_yield:
-            if dividend_yield > 0.04:
+        # Determine dividend status and context
+        dividend_status = "neutral"
+        sustainability = ""
+
+        if dividend_yield is None or dividend_yield == 0:
+            dividend_context = "No dividend payments"
+            dividend_status = "neutral"
+            yield_status = ""
+        else:
+            # Evaluate dividend yield
+            if dividend_yield > 0.06:
+                dividend_context = "Very high yield stock"
+                dividend_status = "warning"  # High yields can be unsustainable
+                yield_status = "Very High Yield"
+            elif dividend_yield > 0.04:
                 dividend_context = "High yield stock"
+                dividend_status = "positive"
+                yield_status = "High Yield"
             elif dividend_yield > 0.02:
                 dividend_context = "Above average yield"
-            elif dividend_yield > 0:
-                dividend_context = "Dividend paying stock"
+                dividend_status = "positive"
+                yield_status = "Above Avg Yield"
             else:
-                dividend_context = "No dividend"
+                dividend_context = "Modest dividend yield"
+                dividend_status = "neutral"
+                yield_status = "Modest Yield"
+
+            # Evaluate dividend sustainability based on payout ratio
+            if payout_ratio:
+                if payout_ratio > 0.9:
+                    sustainability = "Potentially unsustainable payout"
+                    dividend_status = "negative"
+                elif payout_ratio > 0.7:
+                    sustainability = "High payout ratio"
+                    dividend_status = "warning"
+                elif payout_ratio > 0.5:
+                    sustainability = "Moderate payout ratio"
+                    dividend_status = "neutral"
+                else:
+                    sustainability = "Sustainable payout ratio"
+                    dividend_status = "positive"
+
+        # Determine card style based on dividend status
+        card_class = "metric-card"
+        if dividend_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif dividend_status == "negative":
+            card_class = "metric-card metric-card-negative"
+        elif dividend_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator
+        status_class = f"status-{dividend_status}"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">DIVIDEND YIELD</div>
+        <div class="{card_class}">
+            <div class="metric-title">DIVIDEND YIELD <span class="{status_class} status-indicator">{yield_status}</span></div>
             <div class="metric-value">{format_pct(dividend_yield) if dividend_yield else "–"}</div>
-            <div class="metric-context">Payout Ratio: {format_pct(payout_ratio) if payout_ratio else "–"}</div>
-            <div class="metric-context">{dividend_context}</div>
+            <div class="metric-context-highlight">{dividend_context}</div>
+            <div class="metric-context">{sustainability}</div>
+            <div class="metric-context">Payout ratio: {format_pct(payout_ratio) if payout_ratio else "–"}</div>
+            <div class="metric-context">Annual dividend: ${f"{dividend_rate:.2f}" if dividend_rate else "–"} per share</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -204,7 +453,7 @@ def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench
     acol1, acol2 = st.columns(2)
     acol3, acol4 = st.columns(2)
 
-    # 52 Week High/Low combined into one card
+    # 52 Week High/Low with momentum indicator
     week_high = info.get('fiftyTwoWeekHigh')
     week_low = info.get('fiftyTwoWeekLow')
     current_price = price.iloc[-1] if not price.empty else None
@@ -218,16 +467,57 @@ def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench
             # Determine where the current price is in the 52-week range
             range_position = (current_price - week_low) / (week_high - week_low) * 100 if week_high != week_low else 50
 
+            # Determine momentum status based on position in range
+            momentum_status = "neutral"
+            momentum_text = "Neutral momentum"
+
+            if range_position > 80:
+                momentum_status = "positive"
+                momentum_text = "Strong bullish momentum"
+            elif range_position > 60:
+                momentum_status = "positive"
+                momentum_text = "Bullish momentum"
+            elif range_position < 20:
+                momentum_status = "negative"
+                momentum_text = "Strong bearish momentum"
+            elif range_position < 40:
+                momentum_status = "negative"
+                momentum_text = "Bearish momentum"
+
+            # Determine card style based on momentum
+            card_class = "metric-card"
+            if momentum_status == "positive":
+                card_class = "metric-card metric-card-positive"
+            elif momentum_status == "negative":
+                card_class = "metric-card metric-card-negative"
+
+            # Status indicator
+            status_class = f"status-{momentum_status}"
+
+            # Create a historical context for the current position
+            historical_context = ""
+            if range_position > 90:
+                historical_context = "Price is near the 52-week high, indicating strong recent performance"
+            elif range_position > 70:
+                historical_context = "Price is in the upper range, showing positive momentum"
+            elif range_position < 10:
+                historical_context = "Price is near the 52-week low, indicating weak recent performance"
+            elif range_position < 30:
+                historical_context = "Price is in the lower range, showing negative momentum"
+            else:
+                historical_context = "Price is in the middle of its 52-week range"
+
             st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">52-WEEK RANGE</div>
+            <div class="{card_class}">
+                <div class="metric-title">52-WEEK RANGE <span class="{status_class} status-indicator">{momentum_text}</span></div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px; color: black;">
                     <div style="text-align: left; font-weight: 600; color: black;">Low: ${week_low:.2f}</div>
                     <div style="text-align: right; font-weight: 600; color: black;">High: ${week_high:.2f}</div>
                 </div>
                 <div style="height: 6px; background-color: #eee; border-radius: 3px; margin-bottom: 10px;">
-                    <div style="width: {range_position}%; height: 100%; background-color: #3274a1; border-radius: 3px;"></div>
+                    <div style="width: {range_position}%; height: 100%; background-color: {COLORS["BLUE"]}; border-radius: 3px;"></div>
                 </div>
+                <div class="metric-context-highlight">{historical_context}</div>
                 <div class="metric-context">Current price is {range_position:.1f}% of the 52-week range</div>
                 <div class="metric-context">{abs(pct_from_high):.2f}% from 52-week high</div>
                 <div class="metric-context">{abs(pct_from_low):.2f}% from 52-week low</div>
@@ -242,84 +532,249 @@ def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench
             </div>
             """, unsafe_allow_html=True)
 
-    # Volume metrics with context
+    # Volume metrics with trend indicator
     avg_volume = info.get('averageVolume')
     current_volume = volume.iloc[-1] if not volume.empty else None
 
+    # Calculate volume trend (average of last 3 days vs average of previous 7 days)
+    volume_trend = None
+    if len(volume) >= 10:
+        recent_volumes = volume.iloc[-10:].tolist()
+        recent_avg = sum(recent_volumes[-3:]) / 3
+        prev_avg = sum(recent_volumes[:-3]) / 7
+        volume_trend = (recent_avg / prev_avg - 1) * 100 if prev_avg > 0 else 0
+
     with acol2:
+        # Determine volume status and context
+        volume_status = "neutral"
         volume_context = ""
+
         if avg_volume and current_volume:
             volume_ratio = current_volume / avg_volume
-            if volume_ratio > 2:
-                volume_context = "Unusually high volume today"
+            if volume_ratio > 3:
+                volume_context = "Extremely high volume today"
+                volume_status = "warning"  # Unusual activity might indicate volatility
+                volume_indicator = "Extremely High"
+            elif volume_ratio > 2:
+                volume_context = "Very high volume today"
+                volume_status = "warning"
+                volume_indicator = "Very High"
             elif volume_ratio > 1.5:
                 volume_context = "Above average volume today"
+                volume_status = "positive"
+                volume_indicator = "Above Average"
             elif volume_ratio < 0.5:
+                volume_context = "Very low volume today"
+                volume_status = "negative"
+                volume_indicator = "Very Low"
+            elif volume_ratio < 0.7:
                 volume_context = "Below average volume today"
+                volume_status = "neutral"
+                volume_indicator = "Below Average"
             else:
                 volume_context = "Normal trading volume"
+                volume_status = "neutral"
+                volume_indicator = "Normal"
+        else:
+            volume_indicator = ""
+
+        # Determine card style based on volume status
+        card_class = "metric-card"
+        if volume_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif volume_status == "negative":
+            card_class = "metric-card metric-card-negative"
+        elif volume_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator
+        status_class = f"status-{volume_status}"
+
+        # Volume trend text
+        trend_text = ""
+        if volume_trend is not None:
+            if volume_trend > 20:
+                trend_text = "Strongly increasing volume trend"
+            elif volume_trend > 10:
+                trend_text = "Increasing volume trend"
+            elif volume_trend < -20:
+                trend_text = "Strongly decreasing volume trend"
+            elif volume_trend < -10:
+                trend_text = "Decreasing volume trend"
+            else:
+                trend_text = "Stable volume trend"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">VOLUME METRICS</div>
+        <div class="{card_class}">
+            <div class="metric-title">VOLUME METRICS <span class="{status_class} status-indicator">{volume_indicator}</span></div>
             <div class="metric-value">{format_num(avg_volume) if avg_volume else "–"}</div>
-            <div class="metric-context">Avg. Daily Volume</div>
+            <div class="metric-context-highlight">{volume_context}</div>
             <div class="metric-context">Today: {format_num(current_volume) if current_volume else "–"}</div>
-            <div class="metric-context">{volume_context}</div>
+            <div class="metric-context">Ratio to avg: {f"{volume_ratio:.2f}x" if avg_volume and current_volume else "–"}</div>
+            <div class="metric-context">{trend_text}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # Beta with context
+    # Beta with risk indicator
     beta = info.get('beta')
 
     with acol3:
+        # Determine beta status and context
+        beta_status = "neutral"
         beta_context = ""
-        if beta:
-            if beta > 1.5:
+        risk_level = ""
+
+        if beta is not None:
+            if beta > 2:
+                beta_context = "Extremely high volatility compared to market"
+                beta_status = "warning"
+                risk_level = "Very High Risk"
+            elif beta > 1.5:
                 beta_context = "High volatility compared to market"
-            elif beta > 1:
-                beta_context = "More volatile than market"
+                beta_status = "warning"
+                risk_level = "High Risk"
+            elif beta > 1.2:
+                beta_context = "Above average volatility"
+                beta_status = "neutral"
+                risk_level = "Above Average Risk"
             elif beta > 0.8:
                 beta_context = "Similar volatility to market"
+                beta_status = "neutral"
+                risk_level = "Average Risk"
+            elif beta > 0.5:
+                beta_context = "Below average volatility"
+                beta_status = "positive"
+                risk_level = "Below Average Risk"
             elif beta > 0:
-                beta_context = "Less volatile than market"
+                beta_context = "Low volatility compared to market"
+                beta_status = "positive"
+                risk_level = "Low Risk"
+            elif beta > -0.5:
+                beta_context = "Slight negative correlation with market"
+                beta_status = "neutral"
+                risk_level = "Hedging Potential"
             else:
-                beta_context = "Moves opposite to market"
+                beta_context = "Strong negative correlation with market"
+                beta_status = "neutral"
+                risk_level = "Strong Hedging Potential"
+
+        # Determine card style based on beta status
+        card_class = "metric-card"
+        if beta_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif beta_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator
+        status_class = f"status-{beta_status}"
+
+        # Investment style context based on beta
+        investment_context = ""
+        if beta is not None:
+            if beta > 1.5:
+                investment_context = "Suitable for aggressive growth investors"
+            elif beta > 1:
+                investment_context = "Suitable for growth-oriented investors"
+            elif beta > 0.8:
+                investment_context = "Suitable for balanced portfolios"
+            elif beta > 0:
+                investment_context = "Suitable for conservative investors"
+            else:
+                investment_context = "Potential hedge against market downturns"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">BETA</div>
-            <div class="metric-value">{f"{beta:.2f}" if beta else "–"}</div>
-            <div class="metric-context">{beta_context}</div>
-            <div class="metric-context">Beta measures stock's volatility compared to the market</div>
+        <div class="{card_class}">
+            <div class="metric-title">BETA <span class="{status_class} status-indicator">{risk_level}</span></div>
+            <div class="metric-value">{f"{beta:.2f}" if beta is not None else "–"}</div>
+            <div class="metric-context-highlight">{beta_context}</div>
+            <div class="metric-context">{investment_context}</div>
+            <div class="metric-context">Market beta = 1.0 (reference point)</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # Analyst recommendations summary
+    # Analyst recommendations with consensus indicator
     target_price = info.get('targetMeanPrice')
     target_high = info.get('targetHighPrice')
     target_low = info.get('targetLowPrice')
+    recommendation_key = info.get('recommendationKey', '').lower()
 
     with acol4:
-        analyst_context = ""
+        # Determine analyst consensus and context
+        analyst_status = "neutral"
+        consensus_text = "Neutral"
+
         if target_price and current_price:
             upside = (target_price / current_price - 1) * 100
-            if upside > 20:
-                analyst_context = "Strong upside potential"
-            elif upside > 5:
-                analyst_context = "Moderate upside potential"
-            elif upside > -5:
-                analyst_context = "Fair valuation"
+
+            if upside > 30:
+                analyst_context = "Extremely bullish outlook"
+                analyst_status = "positive"
+                consensus_text = "Strong Buy"
+            elif upside > 20:
+                analyst_context = "Very bullish outlook"
+                analyst_status = "positive"
+                consensus_text = "Buy"
+            elif upside > 10:
+                analyst_context = "Bullish outlook"
+                analyst_status = "positive"
+                consensus_text = "Outperform"
+            elif upside > 0:
+                analyst_context = "Slightly bullish outlook"
+                analyst_status = "neutral"
+                consensus_text = "Mild Outperform"
+            elif upside > -10:
+                analyst_context = "Neutral outlook"
+                analyst_status = "neutral"
+                consensus_text = "Hold"
+            elif upside > -20:
+                analyst_context = "Slightly bearish outlook"
+                analyst_status = "warning"
+                consensus_text = "Mild Underperform"
             else:
-                analyst_context = "Potential overvaluation"
+                analyst_context = "Bearish outlook"
+                analyst_status = "negative"
+                consensus_text = "Underperform"
+        else:
+            analyst_context = ""
+
+        # Override consensus text with actual recommendation if available
+        if recommendation_key:
+            if recommendation_key == 'buy':
+                consensus_text = "Buy"
+                analyst_status = "positive"
+            elif recommendation_key == 'overweight':
+                consensus_text = "Overweight"
+                analyst_status = "positive"
+            elif recommendation_key == 'hold':
+                consensus_text = "Hold"
+                analyst_status = "neutral"
+            elif recommendation_key == 'underweight':
+                consensus_text = "Underweight"
+                analyst_status = "warning"
+            elif recommendation_key == 'sell':
+                consensus_text = "Sell"
+                analyst_status = "negative"
+
+        # Determine card style based on analyst status
+        card_class = "metric-card"
+        if analyst_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif analyst_status == "negative":
+            card_class = "metric-card metric-card-negative"
+        elif analyst_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator
+        status_class = f"status-{analyst_status}"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">ANALYST TARGETS</div>
-            <div class="metric-value">${f"{target_price:.2f}" if target_price else "0.00"}</div>
-            <div class="metric-context">Mean Target Price</div>
-            <div class="metric-context">Range: ${f"{target_low:.2f}" if target_low else "0.00"} - ${f"{target_high:.2f}" if target_high else "0.00"}</div>
-            <div class="metric-context">{analyst_context}</div>
+        <div class="{card_class}">
+            <div class="metric-title">ANALYST TARGETS <span class="{status_class} status-indicator">{consensus_text}</span></div>
+            <div class="metric-value">${f"{target_price:.2f}" if target_price else "–"}</div>
+            <div class="metric-context-highlight">{analyst_context}</div>
+            <div class="metric-context">Range: ${f"{target_low:.2f}" if target_low else "–"} - ${f"{target_high:.2f}" if target_high else "–"}</div>
+            <div class="metric-context">Potential upside: {f"{upside:.1f}%" if target_price and current_price else "–"}</div>
+            <div class="metric-context">Based on analyst consensus</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -472,28 +927,73 @@ def render_overview_page(ticker, asset_name, price, volume, metrics, info, bench
     rcol1, rcol2 = st.columns(2)
     rcol3, rcol4 = st.columns(2)
 
-    # Volatility with context
+    # Volatility with risk indicator
     volatility = metrics.get('vol')
 
+    # Calculate recent (30-day) volatility if we have enough data
+    recent_volatility = None
+    market_volatility = 0.15  # Simplified market volatility (VIX/100) for comparison
+
+    if 'rets' in metrics and not metrics['rets'].empty and len(metrics['rets']) >= 30:
+        recent_volatility = metrics['rets'].iloc[-30:].std() * np.sqrt(252)
+
     with rcol1:
-        vol_context = ""
+        # Determine volatility status and context
+        vol_status = "neutral"
         if pd.notna(volatility):
-            if volatility > 0.4:
+            if volatility > 0.5:
                 vol_context = "Extremely high volatility"
-            elif volatility > 0.3:
+                vol_status = "negative"
+                risk_level = "Very High Risk"
+            elif volatility > 0.4:
                 vol_context = "Very high volatility"
-            elif volatility > 0.2:
+                vol_status = "negative"
+                risk_level = "High Risk"
+            elif volatility > 0.3:
                 vol_context = "High volatility"
-            elif volatility > 0.15:
+                vol_status = "warning"
+                risk_level = "Above Average Risk"
+            elif volatility > 0.2:
                 vol_context = "Moderate volatility"
+                vol_status = "neutral"
+                risk_level = "Average Risk"
+            elif volatility > 0.15:
+                vol_context = "Below average volatility"
+                vol_status = "positive"
+                risk_level = "Below Average Risk"
             else:
                 vol_context = "Low volatility"
+                vol_status = "positive"
+                risk_level = "Low Risk"
+        else:
+            vol_context = ""
+            risk_level = ""
+
+        # Calculate relative volatility (stock vol / market vol)
+        rel_vol_text = ""
+        if pd.notna(volatility) and market_volatility:
+            rel_vol = volatility / market_volatility
+            rel_vol_text = f"{rel_vol:.1f}x market volatility"
+
+        # Determine card style based on volatility status
+        card_class = "metric-card"
+        if vol_status == "positive":
+            card_class = "metric-card metric-card-positive"
+        elif vol_status == "negative":
+            card_class = "metric-card metric-card-negative"
+        elif vol_status == "warning":
+            card_class = "metric-card metric-card-warning"
+
+        # Status indicator
+        status_class = f"status-{vol_status}"
 
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">VOLATILITY (ANNUALIZED)</div>
+        <div class="{card_class}">
+            <div class="metric-title">VOLATILITY (ANNUALIZED) <span class="{status_class} status-indicator">{risk_level}</span></div>
             <div class="metric-value">{format_pct(volatility) if pd.notna(volatility) else "–"}</div>
-            <div class="metric-context">{vol_context}</div>
+            <div class="metric-context-highlight">{vol_context}</div>
+            <div class="metric-context">{rel_vol_text}</div>
+            <div class="metric-context">Recent (30-day) volatility: {format_pct(recent_volatility) if pd.notna(recent_volatility) else "–"}</div>
             <div class="metric-context">Standard deviation of returns, annualized</div>
         </div>
         """, unsafe_allow_html=True)

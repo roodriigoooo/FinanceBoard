@@ -38,7 +38,7 @@ def render_fundamental_page(ticker, asset_name, info, financials_q, financials_a
     st.header(f"{asset_name} ({ticker}) - Fundamental Analysis")
 
     # Create tabs for different fundamental analysis sections
-    fund_tabs = st.tabs(["Key Ratios", "Income Statement", "Balance Sheet", "Cash Flow", "Dividends", "Analyst Ratings"])
+    fund_tabs = st.tabs(["Key Ratios", "Income Statement", "Balance Sheet", "Cash Flow", "Dividends"])
 
     with fund_tabs[0]:  # Key Ratios
         st.markdown("### Key Financial Ratios")
